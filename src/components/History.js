@@ -12,13 +12,9 @@ const History = ({ onSessionSelect }) => {
 
   const loadSessions = async () => {
     try {
-      const keys = await AsyncStorage.getAllKeys();
-      const sessionKeys = keys.filter(key => key.startsWith('session_'));
-      const sessionsData = await AsyncStorage.multiGet(sessionKeys);
-      const parsedSessions = sessionsData
-        .map(([key, value]) => JSON.parse(value))
-        .sort((a, b) => b.startTime - a.startTime); // Most recent first
-      setSessions(parsedSessions);
+      const sessionsData = await AsyncStorage.getItem('gps_sessions');
+      const parsedSessions = sessionsData ? JSON.parse(sessionsData) : [];
+      setSessions(parsedSessions.sort((a, b) => b.startTime - a.startTime)); // Most recent first
     } catch (error) {
       console.error('Error loading sessions:', error);
     }
@@ -32,10 +28,13 @@ const History = ({ onSessionSelect }) => {
       <Text style={styles.date}>{formatDate(item.startTime)}</Text>
       <View style={styles.stats}>
         <Text style={styles.stat}>
-          Distance: {formatDistance(item.distance)}
+          Distance: {formatDistance(item.distance || 0)}
         </Text>
         <Text style={styles.stat}>
           Duration: {formatDuration(item.endTime - item.startTime)}
+        </Text>
+        <Text style={styles.stat}>
+          Points: {(item.points || item.coordinates || []).length}
         </Text>
       </View>
     </TouchableOpacity>
@@ -82,6 +81,8 @@ const styles = StyleSheet.create({
   stats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   stat: {
     fontSize: 14,

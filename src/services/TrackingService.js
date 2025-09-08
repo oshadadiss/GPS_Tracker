@@ -1,4 +1,4 @@
-import ForegroundService from '@voximplant/react-native-foreground-service';
+import VIForegroundService from '@voximplant/react-native-foreground-service';
 import Geolocation from '@react-native-community/geolocation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {PermissionsAndroid, Platform} from 'react-native';
@@ -7,7 +7,7 @@ import {PermissionsAndroid, Platform} from 'react-native';
 const SERVICE_CONFIG = {
   id: 1,
   title: 'GPS Tracking',
-  message: 'Tracking active',
+  text: 'Tracking active',
   importance: 3, // IMPORTANCE_DEFAULT
   visibility: 1, // VISIBILITY_PUBLIC
   icon: 'ic_notification', // add this icon to android/app/src/main/res/drawable
@@ -23,9 +23,12 @@ const SERVICE_CONFIG = {
 // Configuration for location tracking
 const LOCATION_CONFIG = {
   enableHighAccuracy: true,
-  distanceFilter: 10,
-  interval: 5000,
-  fastestInterval: 3000,
+  distanceFilter: 5, 
+  interval: 3000, 
+  fastestInterval: 2000, 
+  maxWait: 5000, 
+  accuracy: { android: 'high' },
+  showLocationDialog: true,
 };
 
 // Configuration for data persistence
@@ -105,9 +108,9 @@ const saveToStorage = async (force = false) => {
 const updateNotification = async () => {
   if (!startTime) return;
 
-  await ForegroundService.update({
+  await VIForegroundService.getInstance().startService({
     ...SERVICE_CONFIG,
-    message: `Tracking active — ${formatElapsedTime()} — ${(
+    text: `Tracking active — ${formatElapsedTime()} — ${(
       distance / 1000
     ).toFixed(2)} km`,
   });
@@ -133,55 +136,129 @@ const handleLocationUpdate = location => {
   updateNotification();
 };
 
-// Check and request background location permission
+// Check and request all required location permissions
 const checkBackgroundPermission = async () => {
   if (Platform.OS !== 'android') return true;
 
   try {
-    const granted = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+    // First request fine and coarse location permissions
+    const fineLocation = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
       {
-        title: 'Background Location Permission',
-        message: 'This app needs access to location when in background.',
+        title: 'Precise Location Permission',
+        message: 'This app needs access to precise location.',
         buttonNeutral: 'Ask Me Later',
         buttonNegative: 'Cancel',
         buttonPositive: 'OK',
       },
     );
-    return granted === PermissionsAndroid.RESULTS.GRANTED;
+
+    const coarseLocation = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+      {
+        title: 'Approximate Location Permission',
+        message: 'This app needs access to approximate location.',
+        buttonNeutral: 'Ask Me Later',
+        buttonNegative: 'Cancel',
+        buttonPositive: 'OK',
+      },
+    );
+
+    // Only request background location if fine/coarse location is granted
+    if (fineLocation === PermissionsAndroid.RESULTS.GRANTED &&
+        coarseLocation === PermissionsAndroid.RESULTS.GRANTED) {
+      
+      const backgroundLocation = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+        {
+          title: 'Background Location Permission',
+          message: 'This app needs access to location when in background.',
+          buttonNeutral: 'Ask Me Later',
+          buttonNegative: 'Cancel',
+          buttonPositive: 'OK',
+        },
+      );
+
+      return backgroundLocation === PermissionsAndroid.RESULTS.GRANTED;
+    }
+
+    return false;
   } catch (err) {
-    console.error('Error checking background permission:', err);
+    console.error('Error checking permissions:', err);
     return false;
   }
 };
 
 // Start the tracking service
 export const startForegroundService = async (options = {}) => {
-  // Check background permission
-  const hasPermission = await checkBackgroundPermission();
-  if (!hasPermission) {
-    throw new Error('Background location permission not granted');
+  try {
+    // Check background permission
+    const hasPermission = await checkBackgroundPermission();
+    if (!hasPermission) {
+      throw new Error('Background location permission not granted');
+    }
+
+    // Configure Geolocation
+    Geolocation.setRNConfiguration({
+      skipPermissionRequests: false,
+      enableBackgroundLocationUpdates: true,
+      locationProvider: 'playServices'
+    });
+
+    // Start foreground service
+    await VIForegroundService.getInstance().createNotificationChannel({
+      id: SERVICE_CONFIG.channelId,
+      name: SERVICE_CONFIG.channelName,
+      description: SERVICE_CONFIG.channelDescription,
+      enableVibration: false,
+      importance: SERVICE_CONFIG.importance
+    });
+
+    await VIForegroundService.getInstance().startService({
+      channelId: SERVICE_CONFIG.channelId,
+      id: SERVICE_CONFIG.id,
+      title: SERVICE_CONFIG.title,
+      text: SERVICE_CONFIG.text,
+      icon: SERVICE_CONFIG.icon,
+      importance: SERVICE_CONFIG.importance,
+      priority: 2
+    });
+
+    // Initialize tracking state
+    startTime = Date.now();
+    points = [];
+    distance = 0;
+    lastFlushTime = Date.now();
+
+    // Start location tracking with error handling
+    watchId = Geolocation.watchPosition(
+      handleLocationUpdate,
+      error => {
+        console.error('Location error:', error);
+        // Attempt to restart tracking on error
+        if (watchId !== null) {
+          Geolocation.clearWatch(watchId);
+          watchId = Geolocation.watchPosition(
+            handleLocationUpdate,
+            error => console.error('Location retry error:', error),
+            {...LOCATION_CONFIG, ...options},
+          );
+        }
+      },
+      {...LOCATION_CONFIG, ...options},
+    );
+
+    // Initial notification update
+    await updateNotification();
+  } catch (error) {
+    console.error('Error starting tracking service:', error);
+    // Clean up if service fails to start
+    if (watchId !== null) {
+      Geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+    throw error;
   }
-
-  // Start foreground service
-  await ForegroundService.createNotificationChannel(SERVICE_CONFIG);
-  await ForegroundService.startService(SERVICE_CONFIG);
-
-  // Initialize tracking state
-  startTime = Date.now();
-  points = [];
-  distance = 0;
-  lastFlushTime = Date.now();
-
-  // Start location tracking
-  watchId = Geolocation.watchPosition(
-    handleLocationUpdate,
-    error => console.error('Location error:', error),
-    {...LOCATION_CONFIG, ...options},
-  );
-
-  // Initial notification update
-  await updateNotification();
 };
 
 // Stop the tracking service
@@ -192,7 +269,7 @@ export const stopForegroundService = async () => {
   }
 
   await saveToStorage(true);
-  await ForegroundService.stopService();
+  await VIForegroundService.getInstance().stopService();
 
   // Reset tracking state
   startTime = null;

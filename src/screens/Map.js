@@ -1,10 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import React, {useState, useRef, useEffect} from 'react';
+import {View, StyleSheet, TouchableOpacity, Text} from 'react-native';
+import MapView, {Marker, Polyline, PROVIDER_GOOGLE} from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import History from '../components/History';
-import { getRegionForCoordinates } from '../utils/MapUtils';
+import {getRegionForCoordinates} from '../utils/MapUtils';
 
 const Map = () => {
   const mapRef = useRef(null);
@@ -15,27 +15,27 @@ const Map = () => {
 
   useEffect(() => {
     const watchId = Geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        setCurrentLocation({ latitude, longitude });
-        
+      position => {
+        const {latitude, longitude} = position.coords;
+        setCurrentLocation({latitude, longitude});
+
         if (activeSession) {
           // Add point to active session
-          const newPoint = { latitude, longitude, timestamp: Date.now() };
+          const newPoint = {latitude, longitude, timestamp: Date.now()};
           setActiveSession(prev => ({
             ...prev,
-            coordinates: [...prev.coordinates, newPoint]
+            coordinates: [...prev.coordinates, newPoint],
           }));
-          
+
           // Animate to new location
           mapRef.current?.animateCamera({
-            center: { latitude, longitude },
-            zoom: 16
+            center: {latitude, longitude},
+            zoom: 16,
           });
         }
       },
-      (error) => console.error(error),
-      { enableHighAccuracy: true, distanceFilter: 10, interval: 5000 }
+      error => console.error(error),
+      {enableHighAccuracy: true, distanceFilter: 10, interval: 5000},
     );
 
     return () => Geolocation.clearWatch(watchId);
@@ -45,16 +45,22 @@ const Map = () => {
     if (currentLocation && !activeSession && !selectedSession) {
       mapRef.current?.animateCamera({
         center: currentLocation,
-        zoom: 15
+        zoom: 15,
       });
     }
   }, [currentLocation, activeSession, selectedSession]);
 
-  const handleSessionSelect = (session) => {
+  const handleSessionSelect = session => {
     setSelectedSession(session);
     setShowHistory(false);
-    
-    const region = getRegionForCoordinates(session.coordinates);
+
+    const coordinates = (session.points || session.coordinates || []).map(
+      point => ({
+        latitude: point.latitude,
+        longitude: point.longitude,
+      }),
+    );
+    const region = getRegionForCoordinates(coordinates);
     if (region) {
       mapRef.current?.animateToRegion(region, 1000);
     }
@@ -64,7 +70,7 @@ const Map = () => {
     if (currentLocation) {
       const newSession = {
         startTime: Date.now(),
-        coordinates: [{ ...currentLocation, timestamp: Date.now() }]
+        coordinates: [{...currentLocation, timestamp: Date.now()}],
       };
       setActiveSession(newSession);
       setSelectedSession(null);
@@ -77,42 +83,42 @@ const Map = () => {
       const completedSession = {
         ...activeSession,
         endTime: Date.now(),
-        distance: calculateTotalDistance(activeSession.coordinates)
+        distance: calculateTotalDistance(activeSession.coordinates),
       };
-      
+
       try {
-        await AsyncStorage.setItem(
-          `session_${completedSession.startTime}`,
-          JSON.stringify(completedSession)
-        );
+        const existingSessions = await AsyncStorage.getItem('gps_sessions');
+        const sessions = existingSessions ? JSON.parse(existingSessions) : [];
+        sessions.push(completedSession);
+        await AsyncStorage.setItem('gps_sessions', JSON.stringify(sessions));
       } catch (error) {
         console.error('Error saving session:', error);
       }
-      
+
       setActiveSession(null);
       setShowHistory(true);
     }
   };
 
-  const calculateTotalDistance = (coordinates) => {
+  const calculateTotalDistance = coordinates => {
     let distance = 0;
     for (let i = 1; i < coordinates.length; i++) {
       const lat1 = coordinates[i - 1].latitude;
       const lon1 = coordinates[i - 1].longitude;
       const lat2 = coordinates[i].latitude;
       const lon2 = coordinates[i].longitude;
-      
+
       // Haversine formula
       const R = 6371e3; // Earth's radius in meters
-      const φ1 = lat1 * Math.PI / 180;
-      const φ2 = lat2 * Math.PI / 180;
-      const Δφ = (lat2 - lat1) * Math.PI / 180;
-      const Δλ = (lon2 - lon1) * Math.PI / 180;
+      const φ1 = (lat1 * Math.PI) / 180;
+      const φ2 = (lat2 * Math.PI) / 180;
+      const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+      const Δλ = ((lon2 - lon1) * Math.PI) / 180;
 
-      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                Math.cos(φ1) * Math.cos(φ2) *
-                Math.sin(Δλ/2) * Math.sin(Δλ/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const a =
+        Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+        Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       distance += R * c;
     }
     return distance;
@@ -125,8 +131,7 @@ const Map = () => {
         provider={PROVIDER_GOOGLE}
         style={styles.map}
         showsUserLocation
-        followsUserLocation
-      >
+        followsUserLocation>
         {activeSession?.coordinates && (
           <Polyline
             coordinates={activeSession.coordinates}
@@ -134,15 +139,22 @@ const Map = () => {
             strokeWidth={3}
           />
         )}
-        {selectedSession?.coordinates && (
+        {selectedSession && (
           <Polyline
-            coordinates={selectedSession.coordinates}
+            coordinates={(
+              selectedSession.points ||
+              selectedSession.coordinates ||
+              []
+            ).map(point => ({
+              latitude: point.latitude,
+              longitude: point.longitude,
+            }))}
             strokeColor="#0000FF"
             strokeWidth={3}
           />
         )}
       </MapView>
-      
+
       {showHistory ? (
         <View style={styles.historyContainer}>
           <History onSessionSelect={handleSessionSelect} />
@@ -152,15 +164,13 @@ const Map = () => {
           {!activeSession ? (
             <TouchableOpacity
               style={[styles.button, styles.startButton]}
-              onPress={handleStartSession}
-            >
+              onPress={handleStartSession}>
               <Text style={styles.buttonText}>Start Tracking</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
               style={[styles.button, styles.stopButton]}
-              onPress={handleStopSession}
-            >
+              onPress={handleStopSession}>
               <Text style={styles.buttonText}>Stop Tracking</Text>
             </TouchableOpacity>
           )}
@@ -173,6 +183,7 @@ const Map = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    height: '100%',
   },
   map: {
     flex: 1,

@@ -3,7 +3,10 @@ import {View, StyleSheet, Alert, Linking} from 'react-native';
 import {Text, Button} from '@react-native-material/core';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Permissions from '../components/Permissions';
-import {startForegroundService, stopForegroundService} from '../services/TrackingService';
+import {
+  startForegroundService,
+  stopForegroundService,
+} from '../services/TrackingService';
 
 const Track = () => {
   const [isTracking, setIsTracking] = useState(false);
@@ -11,8 +14,11 @@ const Track = () => {
     points: [],
     distance: 0,
     currentSpeed: 0,
-    averageSpeed: 0
+    averageSpeed: 0,
   });
+
+  // Ensure points is always an array
+  const safePoints = currentSession?.points || [];
 
   // Load current session data from AsyncStorage
   const loadSessionData = useCallback(async () => {
@@ -23,10 +29,12 @@ const Track = () => {
         if (parsedSessions.length > 0) {
           const latestSession = parsedSessions[parsedSessions.length - 1];
           setCurrentSession({
-            points: latestSession.points,
-            distance: latestSession.distance,
+            points: latestSession.points || [],
+            distance: latestSession.distance || 0,
             currentSpeed: 0,
-            averageSpeed: latestSession.distance / ((latestSession.endTime - latestSession.startTime) / 1000 / 3600)
+            averageSpeed:
+              (latestSession.distance || 0) /
+              ((latestSession.endTime - latestSession.startTime) / 1000 / 3600) || 0,
           });
         }
       }
@@ -47,8 +55,8 @@ const Track = () => {
           'This app needs background location access to track your route. Please enable it in Settings.',
           [
             {text: 'Cancel', style: 'cancel'},
-            {text: 'Open Settings', onPress: () => Linking.openSettings()}
-          ]
+            {text: 'Open Settings', onPress: () => Linking.openSettings()},
+          ],
         );
       } else {
         Alert.alert('Error', 'Failed to start tracking. Please try again.');
@@ -85,7 +93,7 @@ const Track = () => {
             Average Speed: {currentSession.averageSpeed.toFixed(1)} km/h
           </Text>
           <Text variant="subtitle1" style={styles.statItem}>
-            Points: {currentSession.points.length}
+            Points: {safePoints.length}
           </Text>
         </View>
 
@@ -121,7 +129,7 @@ const styles = StyleSheet.create({
   button: {
     paddingVertical: 8,
     marginBottom: 16,
-  }
+  },
 });
 
 export default Track;
