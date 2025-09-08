@@ -1,6 +1,7 @@
 import React, {useState} from 'react';
 import {SafeAreaView, StyleSheet, View} from 'react-native';
-import {AppBar, BottomNavigation} from '@react-native-material/core';
+import {AppBar} from '@react-native-material/core';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 // Import screens
 import Track from './src/screens/Track';
@@ -9,12 +10,6 @@ import History from './src/screens/History';
 
 const App = () => {
   const [activeTab, setActiveTab] = useState(0);
-
-  const routes = [
-    {key: 'track', title: 'Track', icon: 'target'},
-    {key: 'map', title: 'Map', icon: 'map'},
-    {key: 'history', title: 'History', icon: 'history'},
-  ];
 
   const renderScene = () => {
     switch (activeTab) {
@@ -35,12 +30,18 @@ const App = () => {
 
       <View style={styles.content}>{renderScene()}</View>
 
-      <BottomNavigation
-        activeIndex={activeTab}
-        onTabPress={index => setActiveTab(index)}
-        style={styles.bottomNav}
-        routes={routes}
-      />
+      <View style={styles.bottomNav}>
+        {['target', 'map', 'history'].map((icon, index) => (
+          <MaterialCommunityIcons
+            key={icon}
+            name={icon}
+            size={24}
+            color={activeTab === index ? '#2196F3' : '#757575'}
+            onPress={() => setActiveTab(index)}
+            style={styles.icon}
+          />
+        ))}
+      </View>
     </SafeAreaView>
   );
 };
@@ -54,7 +55,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   bottomNav: {
-    elevation: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  icon: {
+    padding: 12,
   },
 });
 

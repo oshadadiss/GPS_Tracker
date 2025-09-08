@@ -5,8 +5,8 @@ import MapView from 'react-native-maps';
 
 const Map = () => {
   const initialRegion = {
-    latitude: 37.78825,
-    longitude: -122.4324,
+    latitude: 7.2513,
+    longitude: 80.3464,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   };
